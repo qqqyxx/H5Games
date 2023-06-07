@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>link game</title>
+		<style>
+			.scene{
+				border:solid;
+				width: 1000px;
+				height: 800px;
+				display:flex;
+				flex-direction:row;
+				flex-wrap: wrap;
+				margin: auto;
+			}
+			.toolbar{
+				width: 197px;
+				height: 100%;
+				border-right: solid;
+			}
+			.playground{
+				width: 800px;
+				height: 100%;
+				display: flex;
+				flex-direction:row;
+				flex-wrap: wrap;
+				position: relative;
+			}
+			.cDiv{
+				width: 80px;
+				height: 80px;
+				text-align: center;
+				line-height: 80px;
+			}
+			.selected{
+				opacity: 0.3
+			}
+			.prompt{
+				filter: invert(30%);-webkit-filter: invert(80%);
+			}
+			canvas{
+				position: absolute;
+				display: none;
+			}
+			.score{
+				width: 100%;
+				height: 200px;
+				border-bottom: solid;
+				text-align: center;
+				line-height: 180px;
+			}
+			.buttons{
+				width: 100%;
+				height: 300px;
+				text-align: center;
+				line-height: 60px;
+			}
+		</style>
+	</head>
+	<body>
+	<div class="scene">
+		<div class="toolbar">
+			<div class="score">
+				得分：
+				<span id="scoreValue">0</span>
+			</div>
+			<div class="score">
+				时间：
+				<span id="timeValue">180</span>
+			</div>
+			<div class="buttons">
+				<button onclick="gameStart()">游戏开始</button><br>
+				<button onclick="prompt()">消除提示</button><br>
+				<button onclick="reBuild()">重新排列</button><br>
+			</div>
+		</div>
+		<div class="playground" id="playground" ></div>
+	</div>
+	</body>
+
+	<script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+	<script type="application/javascript">
+		var current; //选择的起始格子对象
+		var target;  //选择的目标格子对象
+		var unUse; //标记对象是否使用完毕
+		var currentX; //起始格子横坐标
+		var currentY; //起始格子纵坐标
+		var targetX; //目标格子横坐标
+		var targetY; //目标格子纵坐标
+		var dfsArray; //二维数组，记录路线坐标遍历中已遍历的坐标
+		var routePoint; //最短路线
+		var routeLength; //最短路线长度
+		var cas; //画笔对象，用来绘制连线
+		var imageType=""; //图片类型，用于检查是否存在一对能消除的图片
+		var score; //记录得分
+		var time; //倒计时
+		var timer; //倒计时计时器
+		function gameStart(){
+			if(timer){
+				clearInterval(timer);
+			}
+			score=0;
+			$("#scoreValue").html(score);
+			time=180;
+			//初始化10X10场地
+			initLabel();
+			//为64个格子随机分配图片
+			randomImage();
+			//检查生成的图片是否至少存在一对可消除
+			checkImage();
+			//初始化二维数组
+			initDfsArray();
+			//开始倒计时
+			timer=setInterval("timeCounter()",1000);
+		}
+		//初始化画笔
+		function initPen(){
+			cas=$('#line')[0].getContext('2d');
+			cas.lineCap = 'square';
+			cas.lineWidth='10';
+			cas.strokeStyle='#f66';
+		}
+		//10X10的二维数组，用于路线计算中深度优先算法记录已访问的坐标点
+		function initDfsArray(){
+			dfsArray=new Array();
+			for(let i=0;i<10;i++){
+				dfsArray[i]=new Array();
+				for(let j=0;j<10;j++){
+					dfsArray[i][j]="";
+				}
+			}
+		}
+		//初始化10X10格子，id以xy坐标命名方便获取和遍历
+		function initLabel(){
+			let x=0;
+			let y=0;
+			$("#playground").html("");
+			for (let i=0;i<100;i++){
+				let newDiv=$("<div class='cDiv' id='"+x+"-"+y+"'></div>");
+				x++;
+				if (x==10){
+					x=0;
+					y++;
+				}
+				$("#playground").append(newDiv);
+			}
+			//添加一块画布，用来展示连线
+			$("#playground").append("<canvas id='line' width='800px' height='800px'></canvas>");
+			initPen();
+		}
+		//随机生成64个图片格子
+		function randomImage(){
+			//场地最外圈不放图片，只用于路径绘制，因此只有8X8=64个格子需要分配图片
+			for (let i=1;i<=64;i+=2){
+				//随机取一张图片，每张图片需要生成两个格子
+				let num=Math.round(Math.random()*(75-1)+1);
+				initImage('images/'+num+'.jpg');
+				initImage('images/'+num+'.jpg');
+			}
+
+		}
+		//将图片分配到空的格子中
+		function initImage(path){
+			let x=Math.round(Math.random()*(8-1)+1);
+			let y=Math.round(Math.random()*(8-1)+1);
+			let label=$("#"+x+"-"+y);
+			if(label.hasClass("pic")){
+				initImage(path);
+			}
+			else
+			{
+				//每一个有图片的格子增加一个名为pic的class用于判断格子中是否存在图片
+				label.addClass("pic");
+				label.css("background","url("+path+")");
+				//自定义属性，用来记录该格子的图片类型，两个相同类型的格子才能消除
+				label.attr("img",path);
+				//为图片增加点击事件
+				label.attr('onClick', 'mark(this);');
+			}
+		}
+		function mark(obj){
+			//点击格子增加变色
+			$(obj).addClass("selected");
+			//判断当前点击的是起始格子还是目标格子，分别记录两个格子对象
+			if (current){
+				//如果当前选择的是目标格子，则计算起始格子到目标格子的路径
+				target=obj;
+				eliminate();
+			}else {
+				current=obj;
+			}
+		}
+		function eliminate(){
+			unUse=true;
+			//不管是否存在路径格子的选择样式都可以去掉了
+			$(".selected").removeClass("selected");
+			//从两个格子对象中获取格子在场景中的坐标
+			currentX=parseInt(current.id.split("-")[0]);
+			currentY=parseInt(current.id.split("-")[1]);
+			targetX=parseInt(target.id.split("-")[0]);
+			targetY=parseInt(target.id.split("-")[1]);
+			//获取两个格子的图片类型
+			let currentImg=$(current).attr("img");
+			let targetImg=$(target).attr("img");
+			//如果两个点击的是同一个格子则不进行计算
+			if (currentX!=targetX||currentY!=targetY){
+				//如果两个格子图片不一致则不进行计算
+				if (currentImg==targetImg){
+					//清空之前的路线，路线长度9999，因为最短路线的筛选是基于长度
+					routePoint="";
+					routeLength=9999;
+					//使用深度优先算法计算两个格子之间连接的最短路径
+					findRoute(currentX,currentY,"");
+					//清空数组以便下一次使用
+					initDfsArray();
+					if (routePoint.length>0){
+						unUse=false;
+						//绘制连线
+						drawLine();
+						setTimeout("cleanPoint()",500);
+					}
+				}
+			}
+			//使用完毕释放对象，如未使用完毕则在cleanPoint中释放
+			if (unUse){
+				//清空两个格子对象
+				current=null;
+				target=null;
+				targetX=null;
+				targetY=null;
+			}
+		}
+		//使用深度优先算法计算两个格子间最短路径
+		//该方法有两个逻辑使用，1.玩家选择了两个图片后2.消除后判断剩余的图片排列是否还至少有一对可消除的
+		function findRoute(cx,cy,route){
+			let point=$("#"+cx+"-"+cy);
+			if (point.length>0)
+			{
+				if (dfsArray[cx][cy]==true){
+					return;
+				}
+				route+=cx+"-"+cy+"|";
+				//判断当前探索的路径是否已超过两个拐点，如果是则终止当前路线探索节省资源
+				if (!determinePath(route)){
+					dfsArray[cx][cy]=false;
+					return;
+				}
+				//探索到连接两点则合理的路线，判断目前格子是否存在可消除时没有目标点xy坐标，而是判断图片类型
+				if ((cx==targetX&&cy==targetY)||(point.attr("img")==imageType&&route.split("|").length>2)){
+					//判断是否为当前最短路线，如果是则记录
+					if (route.split("|").length<routeLength)
+					{
+						routeLength=route.split("|").length;
+						routePoint=route;
+					}
+					return;
+				}
+				//如果探索终点不是目标图片或相同类型图片则终止当前线路
+				else if(point.hasClass("pic")&&!(cx==currentX&&cy==currentY)&&point.attr("img")!=imageType) {
+					dfsArray[cx][cy]=false;
+					return;
+				}
+			}
+			else
+			{
+				return;
+				dfsArray[cx][cy]=false;
+			}
+			dfsArray[cx][cy]=true;
+			//延伸出去，探索当前格子四周的格子，遇到到其他图片或者目标图片时回溯
+			findRoute(cx+1,cy,route);
+			findRoute(cx-1,cy,route);
+			findRoute(cx,cy+1,route);
+			findRoute(cx,cy-1,route);
+			dfsArray[cx][cy]=false;
+		}
+		//判断路径是否可用，路径只允许有两个拐点
+		function determinePath(route){
+			//去掉末尾多余的|
+			route=route.substring(0, route.length - 1);
+			let points=route.split("|");
+			let inflectionCount=0;
+			//记录当前点的上一个点与下一个点坐标，用于判断当前点是否为拐点
+			let preX,preY,nextX,nextY;
+			for (let i=0;i<points.length;i++){
+				let x=points[i].split("-")[0];
+				let y=points[i].split("-")[1];
+				//第一个点没有上一个点直接记录，结束
+				if (i==0){
+					preX=x;
+					preY=y;
+					continue;
+				}
+				if (i+1<points.length){
+					nextX=points[i+1].split("-")[0];
+					nextY=points[i+1].split("-")[1];
+				}
+				//如果前一个点跟下一个点的xy坐标都不相同说明当前点是一个拐点
+				if (nextX&&nextY&&preX!=nextX&&preY!=nextY){
+					inflectionCount++;
+				}
+				preX=x;
+				preY=y;
+				nextX=null;
+				nextY=null;
+			}
+			if(inflectionCount>2){
+				return false;
+			}
+			return true;
+		}
+		//绘制连接两个格子的连线
+		function drawLine(){
+			routePoint=routePoint.substring(0, routePoint.length - 1);
+			let points=routePoint.split("|");
+			//将画布显示出来
+			$("#line").css("display","inline");
+			//遍历路线所经格子，获取相对父级的坐标位置，使用canvas连接
+			for (let i=0;i<points.length;i++){
+				let point=$("#"+points[i]);
+				let x=point.position().left+40;
+				let y=point.position().top+40;
+				if (i==0){
+					cas.moveTo(x,y);
+				}else {
+					cas.lineTo(x,y);
+				}
+			}
+			cas.stroke();
+			$(".prompt").removeClass("prompt");
+		}
+		//清空画布
+		function cleanPoint(){
+			$(current).removeAttr("img");
+			$(current).css("background","");
+			$(current).removeAttr("onclick");
+			$(current).removeClass("pic");
+			$(target).removeAttr("img");
+			$(target).css("background","");
+			$(target).removeAttr("onclick");
+			$(target).removeClass("pic");
+			$("#line").css("display","none");
+			//清空画布
+			$("#line")[0].height=$("#line")[0].height;
+			score+=10;
+			$("#scoreValue").html(score);
+			initPen();
+			//清空两个格子对象
+			current=null;
+			target=null;
+			targetX=null;
+			targetY=null;
+			//检查是否至少存在一对可消除的格子
+			checkImage();
+		}
+		//检查场景中的格子是否至少有一对可消除的
+		function checkImage(){
+			let images=$(".pic");
+			if(images.length==0){
+				clearInterval(timer);
+				return;
+			}
+			let hashSame=false;
+			//遍历场景中存在的图片，计算是否存在到同类型的路线
+			for (let i=0;i<images.length;i++){
+				let pos=images[i].id.split("-");
+				imageType=images[i].getAttribute('img');
+				routePoint="";
+				routeLength=9999;
+				findRoute(parseInt(pos[0]),parseInt(pos[1]),"")
+				if (routePoint.length>0){
+					hashSame=true;
+					break;
+				}
+			}
+			imageType="";
+			//需要重新分配图片
+			if (!hashSame){
+				reBuild();
+			}
+		}
+		//重新排序
+		function reBuild(){
+			let images=$(".pic");
+			//初始化场景
+			initLabel();
+			//将之前场上所有格子重新分配位置
+			for (let i=0;i<images.length;i++){
+				initImage(images[i].getAttribute('img'));
+			}
+			//检查重新排序后的图片是否至少有一对可消除
+			checkImage();
+		}
+		function timeCounter(){
+			time--;
+			$("#timeValue").html(time);
+			if(time==0){
+				//结束
+				clearInterval(timer);
+				//回收所有点击事件
+				let images=$(".pic");
+				images.removeAttr("onclick");
+			}
+		}
+		//获取提示
+		function prompt(){
+			//获取一对可消除格子的路径
+			checkImage();
+			if (routePoint.length>0){
+				routePoint=routePoint.substring(0, routePoint.length - 1);
+				//取出第一个和最后一个格子位置改变颜色
+				let images=routePoint.split("|");
+				$("#"+images[0]).addClass("prompt");
+				$("#"+images[images.length-1]).addClass("prompt");
+			}
+		}
+	</script>
+</html>

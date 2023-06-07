@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Greedy Snake</title>
+  <style>
+    .scene{
+      border:solid;
+      width: 400px;
+      height: 300px;
+      display:flex;
+      flex-direction:row;
+      flex-wrap: wrap;
+      margin: auto;
+    }
+    .level{
+      width: 97px;
+      height:100%;
+      border-right: solid;
+    }
+    .level div{
+      width: 100%;
+      height: 50%;
+      display: flex;
+      flex-direction:row;
+      flex-wrap: wrap;
+    }
+    .level div span{
+      width: 50%;
+      height: 20px;
+      text-align: center;
+    }
+    .scoreLable{
+      margin-top: 10px;
+    }
+    .value{
+      margin-top: 10px;
+    }
+    .status{
+      margin: auto;
+    }
+    .pDiv{
+      width: 300px;
+      display:flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+    .cDiv{
+      width: 30px;
+      height: 30px;
+    }
+    .snake{
+      background-color: #0E1523;
+    }
+    .apple{
+      background-color: #C03639;
+    }
+    .btn{
+      border: solid;
+      margin: auto;
+    }
+  </style>
+</head>
+<body>
+	<div class="scene">
+	  <div class="level">
+	  	<div>
+	  		<span class="scoreLable">得分:</span>
+	  		<span class="value" id="sum">0</span>
+	  		<span class="status" id="status"></span>
+	  	</div>
+	  	<div>
+	  		<span class="btn" onclick="start()">开始</span>
+	  	</div>
+	  </div>
+	  <div class="pDiv" id="pDiv">
+	</div>
+
+  </div>
+</body>
+<script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+<script>
+  //前进的方向
+  var direction="right";
+  //头部所在坐标
+  var headX,headY;
+  //分数
+  var score=0;
+  //控制蛇移动的定时任务句柄
+  var gameInterval;
+  //游戏状态1进行中0结束
+  var status;
+  //启动
+  function start()
+  {
+    //开始时默认从左向右移动
+	  direction="right";
+	  score=0;
+	  $("#sum").html(score);
+	  $("#status").html("");
+	  //初始长度为2，所以头部的坐标为X2，Y1
+	  headX=2;
+	  headY=1;
+    status=1;
+	  initScene();
+	  initSnake();
+	  initApple();
+	  //开始定时判断移动方向并移动蛇，随等级提高同时提高移动速度可自行拓展，修改timeout参数即可
+    gameInterval=setInterval("snakeRun()",500);
+  }
+  //初始化蛇活动的场景，场景由div格子构成，每个格子以格子的坐标点命名id
+  function initScene(){
+    //每次生成前清空一次场地
+	  $("#pDiv").html("");
+    let x=1;
+    let y=1;
+    //场地默认为10X10大小，当x坐标增长到10时当前行结束，y坐标+1换行
+    for (let i=0;i<100;i++){
+      if(x>10){
+        y+=1;
+        x=1;
+      }
+      //创建活动场地中的格子，以divx-y坐标方式命名id方便获取对象进行操作
+      let newDiv=$("<div class='cDiv' id='div"+x+"-"+y+"'></div>");
+      $("#pDiv").append(newDiv);
+      x++;
+    }
+  }
+  //初始化蛇的位置，默认长度为2，头部位置为2-1，尾部为1-1
+  function initSnake(){
+    $("#div1-1").addClass("snake");
+    $("#div2-1").addClass("snake");
+    //自定义属性，记录下一节身体坐标，从头开始记录后面一节身体坐标
+    // 以此类推一级一级记录下来，最后的尾部没有，标识已至末端
+    $("#div2-1").attr("child","1-1");
+
+  }
+  //在场地中生成果子（暂且称之为苹果吧= =! 这是一条素食主义的蛇）
+  function initApple(){
+    let max = 10;
+    let min = 1;
+    //随机生成果子的坐标
+    let x = Math.round((Math.random() * (max - min) + min));
+    let y = Math.round((Math.random() * (max - min) + min));
+    //判断随机的坐标格子中是否有蛇，如果有则递归重新随机
+    let div=$("#div"+x+"-"+y);
+    if (div.hasClass("snake")){
+      initApple();
+    }
+    else {
+      div.addClass("apple");
+    }
+  }
+  //根据当前方向判断前方是否有路，计算头部行进坐标
+  function snakeRun(){
+    let gotoDiv;
+    switch (direction){
+      case "right":
+        if (headX+1>10){
+          gameOver();
+          break;
+        }
+        //获取将要前进的下一个格子，将其设置为头部，相当于蛇身体多了一节
+        //全部身体全部移动完毕后从尾部减去一节，这样蛇就移动了一格
+        gotoDiv=$("#div"+(headX+1)+"-"+headY);
+        //新的头部挂上之前头部的格子坐标
+        gotoDiv.attr("child",headX+"-"+headY);
+        //更新头部位置坐标
+        headX+=1;
+        //移动蛇，参数1目标格子对象，参数2格子的父级坐标，头部没有父级所以用0标识这个头部
+        snakeMove(gotoDiv,0);
+        break;
+        //同right，不再赘述，下同
+        case "left":
+          if (headX-1<1){
+            gameOver();
+            break;
+          }
+          gotoDiv=$("#div"+(headX-1)+"-"+headY);
+          gotoDiv.attr("child",headX+"-"+headY);
+          headX-=1;
+          snakeMove(gotoDiv,0);
+          break;
+        case "down":
+          if (headY+1>10){
+            gameOver();
+            break;
+          }
+          gotoDiv=$("#div"+headX+"-"+(headY+1));
+          gotoDiv.attr("child",headX+"-"+headY);
+          headY+=1;
+          snakeMove(gotoDiv,0);
+          break;
+        case "up":
+          if (headY-1<1){
+            gameOver();
+            break;
+          }
+          gotoDiv=$("#div"+headX+"-"+(headY-1));
+          gotoDiv.attr("child",headX+"-"+headY);
+          headY-=1;
+          snakeMove(gotoDiv,0);
+          break;
+    }
+  }
+  //移动蛇身体，以头部-头部挂载的身体-再往后的身体顺序递归移动，到尾部时直接擦除
+  function snakeMove(snakeBody,parent){
+    //判断当前移动的是否为头部，如果头部的目标格子内存在身体则判定游戏结束
+    if(snakeBody.hasClass("snake")&&parent==0){
+      gameOver();
+      return;
+    }
+    //为目标格子添加样式表示蛇移动到了格子中
+    snakeBody.addClass("snake");
+    //如果蛇碰到了有果子的格子则吃掉果子身体变长，后面的身体不移动
+    if (snakeBody.hasClass("apple")){
+      snakeBody.removeClass("apple");
+      //重新生成果子
+      initApple();
+      //加分
+      score+=10;
+      $("#sum").html(score);
+      return;
+    }
+    //如果当前移动的部分后面还有身体则后面的身体也要移动
+    let childId=snakeBody.attr("child");
+    let childObj=$("#div"+childId);
+    //因为最后一节的尾部没有后面的身体坐标，获取到的坐标为undefined，判断是否存在，存在则继续移动
+    if (childObj.length>0){
+      snakeMove(childObj,snakeBody.attr("id"));
+    }
+    else {
+      //如果根据坐标获取不到div对象则表示已经到了最后一节，需要擦除当前位置的样式
+      //同时将父级的身体的child清除，作为新的尾部，至此蛇所有身体移动完毕
+      snakeBody.removeClass("snake");
+      $("#"+parent).removeAttr("child");
+    }
+  }
+  //监听键盘方向键输入，判断输入方向是否合理，如当前向左移动，向右移动的指令则无效
+  $(document).keydown(function(event){
+    if (status!=1){
+      return;
+    }
+    switch (event.keyCode){
+      case 37:
+        if (direction!="right"){
+          direction="left";
+        }
+        //这里立刻调用一次坐标判断是为了方式在一个定时移动任务周期内同时输入了多次移动指令导致方向混乱，下同
+        snakeRun();
+        break;
+      case 39:
+        if (direction!="left"){
+          direction="right";
+        }
+        snakeRun();
+        break;
+      case 38:
+        if (direction!="down"){
+          direction="up";
+        }
+        snakeRun();
+        break;
+      case 40:
+        if (direction!="up"){
+          direction="down";
+        }
+        snakeRun();
+        break;
+    }
+
+  });
+  //游戏结束，这个就不用讲了吧
+  function gameOver(){
+    clearInterval(gameInterval);
+    status=0;
+    $("#status").html("game over");
+  }
+</script>
+</html>
