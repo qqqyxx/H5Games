@@ -106,10 +106,10 @@
 			initLabel();
 			//为64个格子随机分配图片
 			randomImage();
-			//检查生成的图片是否至少存在一对可消除
-			checkImage();
 			//初始化二维数组
 			initDfsArray();
+			//检查生成的图片是否至少存在一对可消除
+			checkImage();
 			//开始倒计时
 			timer=setInterval("timeCounter()",1000);
 		}
